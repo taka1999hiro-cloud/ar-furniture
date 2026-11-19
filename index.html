@@ -9,7 +9,7 @@
   html, body { margin: 0; height: 100%; background: #14161a; color: #f2f3f5;
     font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; }
   button { font: inherit; color: inherit; border: 0; cursor: pointer; }
-  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  body > canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* 起動前の画面 */
   #intro { position: fixed; inset: 0; z-index: 5; overflow: auto; padding: 28px 22px 40px;
@@ -22,6 +22,14 @@
   #startBtn:disabled { background: #3a3d44; color: #8b9099; }
   #compat { padding: 12px 14px; border-radius: 10px; background: #22252b; font-size: 14px; line-height: 1.6; }
   #compat.ng { background: #3b1f1f; color: #ffc9c9; }
+
+  #imgBox { padding: 14px; border-radius: 12px; background: #1c1f24; display: flex; flex-direction: column; gap: 10px; }
+  .imgHead { font-size: 15px; font-weight: 700; }
+  #imgBtn { display: block; padding: 13px; border-radius: 10px; background: #2b2f37; text-align: center; font-size: 15px; }
+  .imgRow { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 10px; background: #22252b; }
+  .imgRow canvas { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; }
+  .imgRow .nm { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .imgRow button { padding: 8px 10px; border-radius: 8px; background: #343842; font-size: 12px; }
 
   /* AR中の操作パネル */
   #overlay { position: fixed; inset: 0; display: none; touch-action: none; user-select: none; }
@@ -80,6 +88,12 @@
     <li>置いた箱は、指でなぞると移動、2本指でひねると回転します。</li>
     <li>大きな家具は画面に収まりきりません。2〜3m離れるか、スマホを横向きにしてご覧ください。左上の図で全体の配置を確認できます。</li>
   </ol>
+  <div id="imgBox">
+    <div class="imgHead">画像を取り込む(カーテン・ラグ・ポスターなど)</div>
+    <p style="font-size:13px">写真や商品画像を選ぶと、ARの中で実寸の板として置けます。ARを開始する前に選んでください。</p>
+    <label id="imgBtn">＋ 画像を選ぶ<input id="imgInput" type="file" accept="image/*" multiple hidden></label>
+    <div id="imgList"></div>
+  </div>
   <div id="compat">対応状況を確認しています…</div>
   <button id="startBtn" disabled>ARを開始</button>
   <p style="font-size:12px;color:#8b9099">カメラの映像は端末の中だけで処理され、外部には送信されません。定番サイズは目安です。実際の家具の寸法を入力してお使いください。</p>
@@ -105,9 +119,9 @@
       </div>
       <div id="presets"></div>
       <div id="dims">
-        <div class="dim"><label>幅 cm</label><div class="row"><button data-k="w" data-d="-5">−</button><output id="o_w"></output><button data-k="w" data-d="5">＋</button></div></div>
-        <div class="dim"><label>奥行 cm</label><div class="row"><button data-k="d" data-d="-5">−</button><output id="o_d"></output><button data-k="d" data-d="5">＋</button></div></div>
-        <div class="dim"><label>高さ cm</label><div class="row"><button data-k="h" data-d="-5">−</button><output id="o_h"></output><button data-k="h" data-d="5">＋</button></div></div>
+        <div class="dim" id="dim0"><label id="l0"></label><div class="row"><button data-s="0" data-d="-5">−</button><output id="o0"></output><button data-s="0" data-d="5">＋</button></div></div>
+        <div class="dim" id="dim1"><label id="l1"></label><div class="row"><button data-s="1" data-d="-5">−</button><output id="o1"></output><button data-s="1" data-d="5">＋</button></div></div>
+        <div class="dim" id="dim2"><label id="l2"></label><div class="row"><button data-s="2" data-d="-5">−</button><output id="o2"></output><button data-s="2" data-d="5">＋</button></div></div>
       </div>
       <div id="bottomRow">
         <div id="colors"></div>
