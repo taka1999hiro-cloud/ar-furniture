@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>AR家具配置</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #14161a; color: #f2f3f5;
+    font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* 起動前の画面 */
+  #intro { position: fixed; inset: 0; z-index: 5; overflow: auto; padding: 28px 22px 40px;
+    display: flex; flex-direction: column; gap: 18px; background: #14161a; }
+  #intro h1 { margin: 12px 0 0; font-size: 26px; letter-spacing: .02em; }
+  #intro p { margin: 0; line-height: 1.7; color: #c4c8cf; font-size: 15px; }
+  #intro ol { margin: 0; padding-left: 22px; line-height: 1.9; color: #c4c8cf; font-size: 15px; }
+  #startBtn { margin-top: 6px; padding: 18px; border-radius: 14px; font-size: 18px; font-weight: 700;
+    background: #f5b83d; color: #1b1400; }
+  #startBtn:disabled { background: #3a3d44; color: #8b9099; }
+  #compat { padding: 12px 14px; border-radius: 10px; background: #22252b; font-size: 14px; line-height: 1.6; }
+  #compat.ng { background: #3b1f1f; color: #ffc9c9; }
+
+  /* AR中の操作パネル */
+  #overlay { position: fixed; inset: 0; display: none; touch-action: none; user-select: none; }
+  #overlay.on { display: block; }
+  #top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: flex-start; }
+  #status { flex: 1; padding: 9px 12px; border-radius: 10px; background: rgba(15,17,20,.78);
+    font-size: 13px; line-height: 1.45; }
+  #exitBtn { padding: 9px 14px; border-radius: 10px; background: rgba(15,17,20,.78); font-size: 13px; }
+
+  #sheet { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px 14px;
+    background: rgba(15,17,20,.86); border-radius: 16px 16px 0 0; }
+  #toggle { display: block; width: 100%; padding: 4px 0 8px; background: none; font-size: 12px; color: #aab0b9; }
+  #sheet.min .body { display: none; }
+
+  #selRow { display: none; align-items: center; gap: 6px; margin-bottom: 8px; padding: 6px 8px;
+    border-radius: 10px; background: rgba(245,184,61,.16); }
+  #selRow.on { display: flex; }
+  #selName { flex: 1; font-size: 12px; line-height: 1.35; min-width: 0; }
+  #selRow button { min-width: 44px; height: 40px; border-radius: 9px; background: #343842; font-size: 15px; }
+  #delBtn { background: #7a2b2b !important; font-size: 13px !important; padding: 0 10px; }
+
+  #presets { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; touch-action: pan-x; }
+  #presets::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: #2b2f37; font-size: 13px; white-space: nowrap; }
+  .chip.on { background: #f5b83d; color: #1b1400; font-weight: 700; }
+
+  #dims { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+  .dim { background: #22252b; border-radius: 10px; padding: 5px 4px 6px; text-align: center; }
+  .dim label { display: block; font-size: 11px; color: #aab0b9; margin-bottom: 3px; }
+  .dim .row { display: flex; align-items: center; justify-content: space-between; }
+  .dim button { width: 32px; height: 34px; border-radius: 8px; background: #343842; font-size: 18px; line-height: 1; }
+  .dim output { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  #bottomRow { display: flex; gap: 8px; align-items: center; }
+  #colors { display: flex; gap: 6px; }
+  .sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; }
+  .sw.on { border-color: #fff; }
+  #placeBtn { flex: 1; height: 48px; border-radius: 12px; background: #f5b83d; color: #1b1400; font-size: 16px; font-weight: 700; }
+  #placeBtn:disabled { background: #3a3d44; color: #8b9099; }
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <h1>AR家具配置</h1>
+  <p>お部屋の床に、家具と同じ大きさの箱を実寸で置いて、収まりや圧迫感を確かめられます。</p>
+  <ol>
+    <li>「ARを開始」を押し、カメラの使用を許可します。</li>
+    <li>スマホを床に向けて、ゆっくり左右に動かします。</li>
+    <li>床に枠が出たら、家具を選んで「ここに置く」を押します。</li>
+    <li>置いた箱は、指でなぞると移動、2本指でひねると回転します。</li>
+  </ol>
+  <div id="compat">対応状況を確認しています…</div>
+  <button id="startBtn" disabled>ARを開始</button>
+  <p style="font-size:12px;color:#8b9099">カメラの映像は端末の中だけで処理され、外部には送信されません。定番サイズは目安です。実際の家具の寸法を入力してお使いください。</p>
+</div>
+
+<div id="overlay">
+  <div id="top">
+    <div id="status">床にスマホを向けて、ゆっくり動かしてください</div>
+    <button id="exitBtn">終了</button>
+  </div>
+
+  <div id="sheet">
+    <button id="toggle">▼ パネルをたたむ</button>
+    <div class="body">
+      <div id="selRow">
+        <div id="selName"></div>
+        <button id="rotL" aria-label="左に回す">↺</button>
+        <button id="rotR" aria-label="右に回す">↻</button>
+        <button id="delBtn">削除</button>
+      </div>
+      <div id="presets"></div>
+      <div id="dims">
+        <div class="dim"><label>幅 cm</label><div class="row"><button data-k="w" data-d="-5">−</button><output id="o_w"></output><button data-k="w" data-d="5">＋</button></div></div>
+        <div class="dim"><label>奥行 cm</label><div class="row"><button data-k="d" data-d="-5">−</button><output id="o_d"></output><button data-k="d" data-d="5">＋</button></div></div>
+        <div class="dim"><label>高さ cm</label><div class="row"><button data-k="h" data-d="-5">−</button><output id="o_h"></output><button data-k="h" data-d="5">＋</button></div></div>
+      </div>
+      <div id="bottomRow">
+        <div id="colors"></div>
+        <button id="placeBtn" disabled>ここに置く</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
