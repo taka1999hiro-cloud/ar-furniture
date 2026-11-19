@@ -31,6 +31,11 @@
     font-size: 13px; line-height: 1.45; }
   #exitBtn { padding: 9px 14px; border-radius: 10px; background: rgba(15,17,20,.78); font-size: 13px; }
 
+  #map { position: absolute; top: 64px; left: 10px; width: 132px; height: 132px; border-radius: 12px;
+    background: rgba(15,17,20,.72); pointer-events: none; }
+  #mapCap { position: absolute; top: 198px; left: 10px; width: 132px; text-align: center; font-size: 10px;
+    color: #d5d8dd; text-shadow: 0 1px 2px #000; pointer-events: none; }
+
   #sheet { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px 14px;
     background: rgba(15,17,20,.86); border-radius: 16px 16px 0 0; }
   #toggle { display: block; width: 100%; padding: 4px 0 8px; background: none; font-size: 12px; color: #aab0b9; }
@@ -73,6 +78,7 @@
     <li>スマホを床に向けて、ゆっくり左右に動かします。</li>
     <li>床に枠が出たら、家具を選んで「ここに置く」を押します。</li>
     <li>置いた箱は、指でなぞると移動、2本指でひねると回転します。</li>
+    <li>大きな家具は画面に収まりきりません。2〜3m離れるか、スマホを横向きにしてご覧ください。左上の図で全体の配置を確認できます。</li>
   </ol>
   <div id="compat">対応状況を確認しています…</div>
   <button id="startBtn" disabled>ARを開始</button>
@@ -84,6 +90,9 @@
     <div id="status">床にスマホを向けて、ゆっくり動かしてください</div>
     <button id="exitBtn">終了</button>
   </div>
+
+  <canvas id="map" width="264" height="264"></canvas>
+  <div id="mapCap">上から見た配置(1マス1m)</div>
 
   <div id="sheet">
     <button id="toggle">▼ パネルをたたむ</button>

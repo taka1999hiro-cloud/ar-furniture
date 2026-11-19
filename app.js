@@ -176,10 +176,11 @@ $('delBtn').onclick = () => {
   it.userData.mesh.material.dispose();
   it.userData.label.material.map.dispose();
 };
-$('toggle').onclick = () => {
-  const min = $('sheet').classList.toggle('min');
-  $('toggle').textContent = min ? '▲ パネルをひらく' : '▼ パネルをたたむ';
-};
+function setSheet(min) {
+  $('sheet').classList.toggle('min', min);
+  $('toggle').textContent = min ? '▲ パネルをひらく(寸法変更・回転・削除)' : '▼ パネルをたたむ';
+}
+$('toggle').onclick = () => setSheet(!$('sheet').classList.contains('min'));
 placeBtn.onclick = () => {
   if (!reticleOk) return;
   const it = makeItem(cur);
@@ -187,6 +188,7 @@ placeBtn.onclick = () => {
   it.rotation.y = reticle.rotation.y;
   scene.add(it); items.push(it);
   select(it);
+  setSheet(true);            // 置いた直後は視界を広く取る
 };
 $('exitBtn').onclick = () => session && session.end();
 
@@ -284,6 +286,7 @@ async function startAR() {
 
   $('intro').style.display = 'none';
   overlay.classList.add('on');
+  setSheet(false);
   refreshUI();
 }
 
@@ -298,19 +301,64 @@ function onEnd() {
   $('startBtn').disabled = false;
 }
 
+// ---------- 上から見た配置図 ----------
+const map = $('map'), mg = map.getContext('2d');
+const cam = { x: 0, z: 0, fx: 0, fz: -1, ok: false };
+let lastMap = 0;
+function drawMap(time) {
+  if (time - lastMap < 120) return;
+  lastMap = time;
+  const S = map.width, cx = S / 2, cy = S * 0.72, ppm = S / 5;   // 横幅5m分を表示
+  mg.clearRect(0, 0, S, S);
+  if (!cam.ok) return;
+  const rx = -cam.fz, rz = cam.fx;                                 // 右方向
+  const toMap = (x, z) => {
+    const dx = x - cam.x, dz = z - cam.z;
+    return [cx + (dx * rx + dz * rz) * ppm, cy - (dx * cam.fx + dz * cam.fz) * ppm];
+  };
+  // 1mごとの目盛り
+  mg.strokeStyle = 'rgba(255,255,255,0.12)'; mg.lineWidth = 1;
+  for (let i = -5; i <= 5; i++) {
+    mg.beginPath(); mg.moveTo(cx + i * ppm, 0); mg.lineTo(cx + i * ppm, S); mg.stroke();
+    mg.beginPath(); mg.moveTo(0, cy + i * ppm); mg.lineTo(S, cy + i * ppm); mg.stroke();
+  }
+  // 家具
+  for (const it of items) {
+    const d = it.userData.d, t = it.rotation.y, hw = d.w / 200, hd = d.d / 200;
+    const ax = Math.cos(t), az = -Math.sin(t), bx = Math.sin(t), bz = Math.cos(t);
+    mg.beginPath();
+    [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].forEach(([u, v], i) => {
+      const [px, py] = toMap(it.position.x + ax * u + bx * v, it.position.z + az * u + bz * v);
+      i ? mg.lineTo(px, py) : mg.moveTo(px, py);
+    });
+    mg.closePath();
+    mg.fillStyle = d.color; mg.globalAlpha = 0.75; mg.fill(); mg.globalAlpha = 1;
+    mg.strokeStyle = it === selected ? '#ffe14d' : '#ffffff'; mg.lineWidth = it === selected ? 4 : 2; mg.stroke();
+  }
+  // 自分の位置と向き
+  mg.fillStyle = '#ffffff';
+  mg.beginPath(); mg.moveTo(cx, cy - 16); mg.lineTo(cx - 10, cy + 8); mg.lineTo(cx + 10, cy + 8); mg.closePath(); mg.fill();
+}
+
 // ---------- 毎フレーム ----------
 renderer.setAnimationLoop((time, frame) => {
   if (frame && session) {
     if (!refSpace) refSpace = renderer.xr.getReferenceSpace();
+    const viewer = refSpace ? frame.getViewerPose(refSpace) : null;
+    cam.ok = !!viewer;
+    if (viewer) {
+      _m.fromArray(viewer.transform.matrix);
+      _dir.set(0, 0, -1).transformDirection(_m);
+      const len = Math.hypot(_dir.x, _dir.z);
+      if (len > 0.05) { cam.fx = _dir.x / len; cam.fz = _dir.z / len; }   // 真下を向いた時は直前の向きを保つ
+      cam.x = viewer.transform.position.x; cam.z = viewer.transform.position.z;
+    }
     if (hitSource && refSpace) {
       const pose = frame.getHitTestResults(hitSource)[0]?.getPose(refSpace);
-      const viewer = frame.getViewerPose(refSpace);
       if (pose && viewer) {
         reticle.position.copy(pose.transform.position);
         // 家具の正面が自分の方を向くようにする
-        _m.fromArray(viewer.transform.matrix);
-        _dir.set(0, 0, -1).transformDirection(_m);
-        reticle.rotation.y = Math.atan2(-_dir.x, -_dir.z);
+        reticle.rotation.y = Math.atan2(-cam.fx, -cam.fz);
       }
       const ok = !!(pose && viewer);
       if (ok !== reticleOk) {
@@ -327,6 +375,7 @@ renderer.setAnimationLoop((time, frame) => {
       drag.item.position.z = _p.z + drag.oz;
     }
   }
+  if (session) drawMap(time);
   renderer.render(scene, camera);
 });
 
