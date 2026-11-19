@@ -108,6 +108,15 @@
   </div>
 </div>
 
+<script>
+  // 読み込みや実行で失敗したら、原因を画面に出す
+  function showErr(msg) {
+    var c = document.getElementById('compat');
+    c.textContent = 'エラー:' + msg; c.classList.add('ng');
+  }
+  window.addEventListener('error', function (e) { showErr(e.message || (e.target && e.target.src) || '読み込み失敗'); }, true);
+  window.addEventListener('unhandledrejection', function (e) { showErr(String(e.reason)); });
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
