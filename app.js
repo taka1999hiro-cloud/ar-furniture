@@ -21,7 +21,7 @@ const LIMIT = { min: 5, max: 400 };
 // ---------- 状態 ----------
 const images = [];         // 取り込んだ画像 { id, name, canvas, tex, aspect, flat }
 let imgSeq = 0;
-const cur = { kind: 'box', img: null, flat: false, lift: 0, name: PRESETS[0].name, w: PRESETS[0].w, d: PRESETS[0].d, h: PRESETS[0].h, color: COLORS[0] };
+const cur = { kind: 'box', img: null, flat: false, solid: false, lift: 0, name: PRESETS[0].name, w: PRESETS[0].w, d: PRESETS[0].d, h: PRESETS[0].h, color: COLORS[0] };
 const items = [];          // 置いた家具(THREE.Group)
 let selected = null;
 let session = null, refSpace = null, hitSource = null;
@@ -73,7 +73,7 @@ const unitBox = new THREE.BoxGeometry(1, 1, 1);
 const unitEdges = new THREE.EdgesGeometry(unitBox);
 const unitPlane = new THREE.PlaneGeometry(1, 1);
 const planeEdges = new THREE.EdgesGeometry(unitPlane);
-const isStanding = (d) => d.kind === 'img' && !d.flat;
+const isStanding = (d) => d.kind === 'img' && !d.flat && !d.solid;
 
 function makeLabel() {
   const canvas = document.createElement('canvas');
@@ -95,7 +95,7 @@ function drawLabel(sprite, d) {
   g.font = '600 38px system-ui, sans-serif';
   g.fillText(d.name, c.width / 2, 40, c.width - 30);
   g.font = '500 34px system-ui, sans-serif';
-  const size = d.kind !== 'img' ? `${d.w} × ${d.d} × ${d.h} cm` : d.flat ? `${d.w} × ${d.d} cm` : `${d.w} × ${d.h} cm`;
+  const size = d.kind !== 'img' || d.solid ? `${d.w} × ${d.d} × ${d.h} cm` : d.flat ? `${d.w} × ${d.d} cm` : `${d.w} × ${d.h} cm`;
   g.fillText(size, c.width / 2, 92, c.width - 30);
   sprite.material.map.needsUpdate = true;
 }
@@ -103,10 +103,17 @@ function drawLabel(sprite, d) {
 function makeItem(d) {
   const g = new THREE.Group();
   const isImg = d.kind === 'img';
-  const mesh = isImg
-    ? new THREE.Mesh(unitPlane, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide }))
-    : new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.6 }));
-  const edges = new THREE.LineSegments(isImg ? planeEdges : unitEdges, new THREE.LineBasicMaterial({ color: 0xffffff }));
+  let mesh;
+  if (isImg && d.solid) {
+    // 写真を正面に貼った箱。面の並びは 右・左・上・下・正面・背面
+    const mats = [0, 1, 2, 3, 4, 5].map((i) => (i === 4 ? new THREE.MeshBasicMaterial() : new THREE.MeshLambertMaterial()));
+    mesh = new THREE.Mesh(unitBox, mats);
+  } else if (isImg) {
+    mesh = new THREE.Mesh(unitPlane, new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide }));
+  } else {
+    mesh = new THREE.Mesh(unitBox, new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.6 }));
+  }
+  const edges = new THREE.LineSegments(isImg && !d.solid ? planeEdges : unitEdges, new THREE.LineBasicMaterial({ color: 0xffffff }));
   const label = makeLabel();
   g.add(mesh, edges, label);
   g.userData = { d: { ...d }, mesh, edges, label };
@@ -120,8 +127,16 @@ function applyDims(g) {
   const w = d.w / 100, dp = d.d / 100, h = d.h / 100;
   if (d.kind === 'img') {
     const im = images.find((x) => x.id === d.img);
-    if (im && mesh.material.map !== im.tex) { mesh.material.map = im.tex; mesh.material.needsUpdate = true; }
-    if (d.flat) {                       // 床に敷く(ラグなど)
+    if (d.solid) {                      // 写真を貼った箱
+      if (im) mesh.material.forEach((m, i) => {
+        if (i === 4) { if (m.map !== im.tex) { m.map = im.tex; m.needsUpdate = true; } } else m.color.set(im.avg);
+      });
+      mesh.rotation.x = 0; mesh.scale.set(w, h, dp); mesh.position.y = h / 2;
+      label.position.y = h + 0.12;
+    } else if (im && mesh.material.map !== im.tex) { mesh.material.map = im.tex; mesh.material.needsUpdate = true; }
+    if (d.solid) {
+      // 上で設定済み
+    } else if (d.flat) {                       // 床に敷く(ラグなど)
       mesh.rotation.x = -Math.PI / 2; mesh.scale.set(w, dp, 1); mesh.position.y = 0.004;
       label.position.y = 0.25;
     } else {                            // 立てる(カーテン・ポスターなど)
@@ -162,7 +177,7 @@ function select(item) {
 // ---------- 画面 ----------
 // 寸法欄の3つの枠が、今どの値を指すか
 function slots() {
-  if (cur.kind !== 'img') return [['w', '幅 cm'], ['d', '奥行 cm'], ['h', '高さ cm']];
+  if (cur.kind !== 'img' || cur.solid) return [['w', '幅 cm'], ['d', '奥行 cm'], ['h', '高さ cm']];
   return cur.flat ? [['w', '幅 cm'], ['d', '奥行 cm'], null] : [['w', '幅 cm'], ['h', '高さ cm'], ['lift', '床から cm']];
 }
 const curKey = () => (cur.kind === 'img' ? 'i:' + cur.img : 'p:' + cur.name);
@@ -189,14 +204,16 @@ function pushToSelected() {
 const snap5 = (v) => Math.min(LIMIT.max, Math.max(LIMIT.min, Math.round(v / 5) * 5));
 
 function pickImage(im) {
-  if (selected && selected.userData.d.kind !== 'img') select(null);
+  const sd = selected && selected.userData.d;
+  if (sd && (sd.kind !== 'img' || sd.solid !== im.solid)) select(null);
   const w = im.flat ? 140 : 100, other = snap5(w / im.aspect);
-  Object.assign(cur, { kind: 'img', img: im.id, flat: im.flat, name: im.name, w, lift: 0 }, im.flat ? { d: other } : { h: other });
+  Object.assign(cur, { kind: 'img', img: im.id, flat: im.flat, solid: im.solid, name: im.name, w, lift: 0 },
+    im.solid ? { h: other, d: 40 } : im.flat ? { d: other } : { h: other });
   pushToSelected();
 }
 function pickPreset(p) {
   if (selected && selected.userData.d.kind === 'img') select(null);
-  Object.assign(cur, { kind: 'box', img: null, flat: false, lift: 0, name: p.name, w: p.w, d: p.d, h: p.h });
+  Object.assign(cur, { kind: 'box', img: null, flat: false, solid: false, lift: 0, name: p.name, w: p.w, d: p.d, h: p.h });
   pushToSelected();
 }
 function rebuildChips() {
@@ -220,8 +237,10 @@ function renderImgList() {
     const row = document.createElement('div'); row.className = 'imgRow';
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = im.name;
     const mode = document.createElement('button');
-    mode.textContent = im.flat ? '床に敷く' : '立てる';
-    mode.onclick = () => { im.flat = !im.flat; if (cur.kind === 'img' && cur.img === im.id) pickImage(im); renderImgList(); };
+    mode.textContent = im.solid ? '立体(箱)' : im.flat ? '床に敷く' : '立てる';
+    mode.onclick = () => {
+      // 立てる → 床に敷く → 立体(箱) の順に切り替え
+      if (im.solid) { im.solid = false; } else if (im.flat) { im.flat = false; im.solid = true; } else { im.flat = true; } if (cur.kind === 'img' && cur.img === im.id) pickImage(im); renderImgList(); };
     const del = document.createElement('button'); del.textContent = '削除';
     del.onclick = () => {
       images.splice(images.indexOf(im), 1); im.tex.dispose();
@@ -241,7 +260,14 @@ $('imgInput').onchange = async (e) => {
     c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    images.push({ id: ++imgSeq, name: f.name.replace(/\.[^.]+$/, '').slice(0, 10) || '画像', canvas: c, tex, aspect: c.width / c.height, flat: false });
+    // 側面に使う、写真全体の平均色
+    const sc = document.createElement('canvas'); sc.width = sc.height = 8;
+    const sg = sc.getContext('2d'); sg.drawImage(c, 0, 0, 8, 8);
+    const px = sg.getImageData(0, 0, 8, 8).data;
+    let r = 0, g2 = 0, b2 = 0, n = 0;
+    for (let i = 0; i < px.length; i += 4) { if (px[i + 3] < 32) continue; r += px[i]; g2 += px[i + 1]; b2 += px[i + 2]; n++; }
+    const avg = n ? `rgb(${Math.round(r / n)},${Math.round(g2 / n)},${Math.round(b2 / n)})` : '#b8b8b8';
+    images.push({ avg, solid: false, id: ++imgSeq, name: f.name.replace(/\.[^.]+$/, '').slice(0, 10) || '画像', canvas: c, tex, aspect: c.width / c.height, flat: false });
   }
   e.target.value = '';
   renderImgList(); rebuildChips();
@@ -271,7 +297,7 @@ $('delBtn').onclick = () => {
   select(null);
   scene.remove(it);
   items.splice(items.indexOf(it), 1);
-  it.userData.mesh.material.dispose();
+  [].concat(it.userData.mesh.material).forEach((m) => m.dispose());
   it.userData.label.material.map.dispose();
 };
 function setSheet(min) {
@@ -431,7 +457,7 @@ function drawMap(time) {
       i ? mg.lineTo(px, py) : mg.moveTo(px, py);
     });
     mg.closePath();
-    mg.fillStyle = d.kind === 'img' ? '#ffffff' : d.color; mg.globalAlpha = 0.75; mg.fill(); mg.globalAlpha = 1;
+    mg.fillStyle = d.kind === 'img' ? (d.solid ? (images.find((x) => x.id === d.img)?.avg || '#fff') : '#ffffff') : d.color; mg.globalAlpha = 0.75; mg.fill(); mg.globalAlpha = 1;
     mg.strokeStyle = it === selected ? '#ffe14d' : '#ffffff'; mg.lineWidth = it === selected ? 4 : 2; mg.stroke();
   }
   // 自分の位置と向き
